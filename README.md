@@ -1,7 +1,9 @@
 ﻿# Student Management System
 
-A console-based Student Management System written in C++. It lets you manage student records with full CRUD operations and saves data permanently in a text file.
+A console-based Student Management System written in C++ with an SQLite database. It supports full CRUD operations and stores data permanently in a database file.
+
 ![Menu](screenshots/menu.png)
+
 ## Features
 
 - Add a new student (ID, name, department, CGPA)
@@ -10,29 +12,25 @@ A console-based Student Management System written in C++. It lets you manage stu
 - Update student information
 - Delete a student
 - Duplicate ID check
-- Data saved automatically to a file
+- Data stored in an SQLite database using prepared statements
 
 ## Technologies Used
 
-- C++ (STL: vector, fstream, string)
-- File handling for data storage
+- C++
+- SQLite 3 (C API)
 
 ## How to Run
 
-1. Clone the repository:
-   `git clone https://github.com/Rony60031/student-management-system.git`
-2. Go to the project folder:
-   `cd student-management-system`
-3. Compile:
-   `g++ main.cpp -o student_system`
-4. Run:
-   `./student_system`
+1. Clone the repository
+2. Download the SQLite amalgamation from https://sqlite.org/download.html and place sqlite3.c and sqlite3.h in the project folder
+3. Compile SQLite once: gcc -c sqlite3.c -o sqlite3.o
+4. Compile the program: g++ main.cpp sqlite3.o -o student_system
+5. Run: ./student_system
 
-## Future Improvements
+## Version History
 
-- Migrate storage from text file to an SQL database
-- Add a GUI
-- Add login system for admin
+- v1-textfile: first version using a text file for storage
+- Current: SQLite database version
 
 ## Author
 

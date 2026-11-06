@@ -1,136 +1,171 @@
 #include <iostream>
-#include <fstream>
-#include <vector>
 #include <string>
 #include <limits>
+#include "sqlite3.h"
 using namespace std;
 
-struct Student {
-    int id;
-    string name;
-    string department;
-    double cgpa;
-};
+sqlite3* db = nullptr;
 
-vector<Student> students;
-const string FILE_NAME = "students.txt";
-
-void loadFromFile() {
-    ifstream file(FILE_NAME);
-    if (!file) return;
-    Student s;
-    while (file >> s.id) {
-        file.ignore();
-        getline(file, s.name);
-        getline(file, s.department);
-        file >> s.cgpa;
-        students.push_back(s);
+void checkError(int rc, char* errMsg) {
+    if (rc != SQLITE_OK) {
+        cout << "SQL error: " << (errMsg ? errMsg : "unknown") << "\n";
+        sqlite3_free(errMsg);
     }
-    file.close();
 }
 
-void saveToFile() {
-    ofstream file(FILE_NAME);
-    for (const Student& s : students) {
-        file << s.id << "\n" << s.name << "\n"
-             << s.department << "\n" << s.cgpa << "\n";
-    }
-    file.close();
+void createTable() {
+    const char* sql =
+        "CREATE TABLE IF NOT EXISTS students ("
+        "id INTEGER PRIMARY KEY,"
+        "name TEXT NOT NULL,"
+        "department TEXT NOT NULL,"
+        "cgpa REAL NOT NULL);";
+    char* errMsg = nullptr;
+    int rc = sqlite3_exec(db, sql, nullptr, nullptr, &errMsg);
+    checkError(rc, errMsg);
 }
 
-int findIndexById(int id) {
-    for (size_t i = 0; i < students.size(); i++) {
-        if (students[i].id == id) return i;
-    }
-    return -1;
+bool studentExists(int id) {
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db, "SELECT 1 FROM students WHERE id = ?;", -1, &stmt, nullptr);
+    sqlite3_bind_int(stmt, 1, id);
+    bool exists = (sqlite3_step(stmt) == SQLITE_ROW);
+    sqlite3_finalize(stmt);
+    return exists;
 }
 
 void addStudent() {
-    Student s;
+    int id;
+    string name, dept;
+    double cgpa;
     cout << "Enter ID: ";
-    cin >> s.id;
-    if (findIndexById(s.id) != -1) {
+    cin >> id;
+    if (studentExists(id)) {
         cout << "A student with this ID already exists.\n";
         return;
     }
     cin.ignore();
     cout << "Enter Name: ";
-    getline(cin, s.name);
+    getline(cin, name);
     cout << "Enter Department: ";
-    getline(cin, s.department);
+    getline(cin, dept);
     cout << "Enter CGPA: ";
-    cin >> s.cgpa;
-    students.push_back(s);
-    saveToFile();
-    cout << "Student added successfully.\n";
+    cin >> cgpa;
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "INSERT INTO students (id, name, department, cgpa) VALUES (?, ?, ?, ?);",
+        -1, &stmt, nullptr);
+    sqlite3_bind_int(stmt, 1, id);
+    sqlite3_bind_text(stmt, 2, name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, dept.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 4, cgpa);
+    if (sqlite3_step(stmt) == SQLITE_DONE)
+        cout << "Student added successfully.\n";
+    else
+        cout << "Failed to add student.\n";
+    sqlite3_finalize(stmt);
 }
 
 void displayAll() {
-    if (students.empty()) {
-        cout << "No students found.\n";
-        return;
-    }
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT id, name, department, cgpa FROM students ORDER BY id;",
+        -1, &stmt, nullptr);
+    bool found = false;
     cout << "\nID\tName\t\tDepartment\tCGPA\n";
     cout << "--------------------------------------------------\n";
-    for (const Student& s : students) {
-        cout << s.id << "\t" << s.name << "\t\t"
-             << s.department << "\t\t" << s.cgpa << "\n";
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        found = true;
+        cout << sqlite3_column_int(stmt, 0) << "\t"
+             << sqlite3_column_text(stmt, 1) << "\t\t"
+             << sqlite3_column_text(stmt, 2) << "\t\t"
+             << sqlite3_column_double(stmt, 3) << "\n";
     }
+    if (!found) cout << "No students found.\n";
+    sqlite3_finalize(stmt);
 }
 
 void searchStudent() {
     int id;
     cout << "Enter ID to search: ";
     cin >> id;
-    int i = findIndexById(id);
-    if (i == -1) {
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT name, department, cgpa FROM students WHERE id = ?;",
+        -1, &stmt, nullptr);
+    sqlite3_bind_int(stmt, 1, id);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        cout << "Name: " << sqlite3_column_text(stmt, 0) << "\n"
+             << "Department: " << sqlite3_column_text(stmt, 1) << "\n"
+             << "CGPA: " << sqlite3_column_double(stmt, 2) << "\n";
+    } else {
         cout << "Student not found.\n";
-        return;
     }
-    cout << "Name: " << students[i].name << "\n"
-         << "Department: " << students[i].department << "\n"
-         << "CGPA: " << students[i].cgpa << "\n";
+    sqlite3_finalize(stmt);
 }
 
 void updateStudent() {
     int id;
+    string name, dept;
+    double cgpa;
     cout << "Enter ID to update: ";
     cin >> id;
-    int i = findIndexById(id);
-    if (i == -1) {
+    if (!studentExists(id)) {
         cout << "Student not found.\n";
         return;
     }
     cin.ignore();
     cout << "New Name: ";
-    getline(cin, students[i].name);
+    getline(cin, name);
     cout << "New Department: ";
-    getline(cin, students[i].department);
+    getline(cin, dept);
     cout << "New CGPA: ";
-    cin >> students[i].cgpa;
-    saveToFile();
-    cout << "Student updated successfully.\n";
+    cin >> cgpa;
+
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db,
+        "UPDATE students SET name = ?, department = ?, cgpa = ? WHERE id = ?;",
+        -1, &stmt, nullptr);
+    sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, dept.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 3, cgpa);
+    sqlite3_bind_int(stmt, 4, id);
+    if (sqlite3_step(stmt) == SQLITE_DONE)
+        cout << "Student updated successfully.\n";
+    else
+        cout << "Failed to update student.\n";
+    sqlite3_finalize(stmt);
 }
 
 void deleteStudent() {
     int id;
     cout << "Enter ID to delete: ";
     cin >> id;
-    int i = findIndexById(id);
-    if (i == -1) {
+    if (!studentExists(id)) {
         cout << "Student not found.\n";
         return;
     }
-    students.erase(students.begin() + i);
-    saveToFile();
-    cout << "Student deleted successfully.\n";
+    sqlite3_stmt* stmt;
+    sqlite3_prepare_v2(db, "DELETE FROM students WHERE id = ?;", -1, &stmt, nullptr);
+    sqlite3_bind_int(stmt, 1, id);
+    if (sqlite3_step(stmt) == SQLITE_DONE)
+        cout << "Student deleted successfully.\n";
+    else
+        cout << "Failed to delete student.\n";
+    sqlite3_finalize(stmt);
 }
 
 int main() {
-    loadFromFile();
+    if (sqlite3_open("students.db", &db) != SQLITE_OK) {
+        cout << "Cannot open database.\n";
+        return 1;
+    }
+    createTable();
+
     int choice;
     do {
-        cout << "\n=== Student Management System ===\n";
+        cout << "\n=== Student Management System (SQLite) ===\n";
         cout << "1. Add Student\n";
         cout << "2. Display All Students\n";
         cout << "3. Search Student\n";
@@ -157,5 +192,6 @@ int main() {
         }
     } while (choice != 0);
 
+    sqlite3_close(db);
     return 0;
 }
