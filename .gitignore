@@ -1,3 +1,7 @@
 *.exe
 *.o
 students.txt
+students.db
+output/
+sqlite3.c
+sqlite3.h
